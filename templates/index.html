@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Local LLM Chat</title>
+<style>
+    :root {
+        --bg: #f5f5f7;
+        --panel: #ffffff;
+        --border: #e2e2e5;
+        --text: #1a1a1a;
+        --text-muted: #6b6b70;
+        --user-bubble: #2563eb;
+        --user-text: #ffffff;
+        --bot-bubble: #ececee;
+        --bot-text: #1a1a1a;
+        --input-bg: #ffffff;
+    }
+    [data-theme="dark"] {
+        --bg: #131316;
+        --panel: #1c1c20;
+        --border: #2e2e33;
+        --text: #eaeaec;
+        --text-muted: #9a9aa0;
+        --user-bubble: #3b82f6;
+        --user-text: #ffffff;
+        --bot-bubble: #2a2a30;
+        --bot-text: #eaeaec;
+        --input-bg: #1c1c20;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+        font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+        max-width: 720px;
+        margin: 30px auto;
+        background: var(--bg);
+        color: var(--text);
+        transition: background 0.2s, color 0.2s;
+    }
+
+    .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+        padding: 0 4px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .topbar h2 { margin: 0; font-size: 20px; font-weight: 600; }
+
+    .topbar-controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    #modelSelect, #themeToggle, #uploadBtn {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 20px;
+        padding: 6px 14px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    #modelSelect:hover, #themeToggle:hover, #uploadBtn:hover { border-color: var(--text-muted); }
+
+    .rag-toggle {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+
+    #docStatus {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: 0 0 10px 4px;
+    }
+
+    #chatbox {
+        background: var(--panel);
+        border-radius: 14px;
+        padding: 20px;
+        height: 460px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        margin-bottom: 14px;
+    }
+
+    .row {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        margin: 14px 0;
+    }
+    .row.user { flex-direction: row-reverse; }
+
+    .avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 600;
+        flex-shrink: 0;
+        color: white;
+    }
+    .avatar.user { background: var(--user-bubble); }
+    .avatar.bot { background: #16794f; }
+
+    .bubble {
+        max-width: 75%;
+        padding: 10px 14px;
+        border-radius: 16px;
+        line-height: 1.5;
+        font-size: 14.5px;
+        word-wrap: break-word;
+    }
+    .bubble.user {
+        background: var(--user-bubble);
+        color: var(--user-text);
+        border-bottom-right-radius: 4px;
+    }
+    .bubble.bot {
+        background: var(--bot-bubble);
+        color: var(--bot-text);
+        border-bottom-left-radius: 4px;
+    }
+    .bubble b { font-weight: 600; }
+
+    #inputRow { display: flex; gap: 10px; }
+    #userInput {
+        flex: 1;
+        padding: 12px 14px;
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        background: var(--input-bg);
+        color: var(--text);
+        font-size: 14.5px;
+        outline: none;
+    }
+    #userInput:focus { border-color: var(--user-bubble); }
+
+    button.send, button.reset {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 24px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    button.send { background: var(--user-bubble); color: white; }
+    button.send:hover { opacity: 0.9; }
+    button.reset { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+    button.reset:hover { border-color: var(--text-muted); }
+
+    #chatbox::-webkit-scrollbar { width: 8px; }
+    #chatbox::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+    <h2>🦙 Local LLM Chat</h2>
+    <div class="topbar-controls">
+        <select id="modelSelect" onchange="switchModel()"></select>
+        <input type="file" id="fileInput" accept=".pdf,.txt" style="display:none" onchange="uploadFile()">
+        <button id="uploadBtn" onclick="document.getElementById('fileInput').click()">📄 Upload doc</button>
+        <label class="rag-toggle">
+            <input type="checkbox" id="useRag"> Use document
+        </label>
+        <button id="themeToggle" onclick="toggleTheme()">🌙 Dark mode</button>
+    </div>
+</div>
+
+<div id="docStatus"></div>
+
+<div id="chatbox"></div>
+
+<div id="inputRow">
+    <input type="text" id="userInput" placeholder="Type a message..." autofocus>
+    <button class="send" onclick="sendMessage()">Send</button>
+    <button class="reset" onclick="resetChat()">Reset</button>
+</div>
+
+<script>
+const chatbox = document.getElementById('chatbox');
+const userInput = document.getElementById('userInput');
+let messageCounter = 0;
+
+function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    document.getElementById('themeToggle').textContent = isDark ? '🌙 Dark mode' : '☀️ Light mode';
+}
+
+userInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') sendMessage();
+});
+
+function addBubble(role, text, id) {
+    const row = document.createElement('div');
+    row.className = `row ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = `avatar ${role}`;
+    avatar.textContent = role === 'user' ? 'You' : 'AI';
+
+    const bubble = document.createElement('div');
+    bubble.className = `bubble ${role}`;
+    if (id) bubble.id = id;
+    bubble.innerHTML = text;
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    chatbox.appendChild(row);
+    chatbox.scrollTop = chatbox.scrollHeight;
+    return bubble;
+}
+
+async function sendMessage() {
+    const message = userInput.value.trim();
+    if (!message) return;
+
+    addBubble('user', message);
+    userInput.value = '';
+
+    messageCounter++;
+    const currentId = `current-${messageCounter}`;
+    addBubble('bot', '', currentId);
+
+    const response = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            message,
+            use_rag: document.getElementById('useRag').checked
+        })
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const currentBubble = document.getElementById(currentId);
+    let rawText = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        rawText += decoder.decode(value);
+        currentBubble.innerHTML = formatMarkdown(rawText);
+        chatbox.scrollTop = chatbox.scrollHeight;
+    }
+}
+
+function formatMarkdown(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>")
+        .replace(/\n/g, "<br>");
+}
+
+async function resetChat() {
+    await fetch('/reset', { method: 'POST' });
+    chatbox.innerHTML = '';
+    messageCounter = 0;
+}
+
+async function loadModels() {
+    const res = await fetch('/models');
+    const data = await res.json();
+    const select = document.getElementById('modelSelect');
+    select.innerHTML = '';
+    data.models.forEach(model => {
+        const opt = document.createElement('option');
+        opt.value = model;
+        opt.textContent = model;
+        if (model === data.current) opt.selected = true;
+        select.appendChild(opt);
+    });
+}
+
+async function switchModel() {
+    const model = document.getElementById('modelSelect').value;
+    await fetch('/set_model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model })
+    });
+    chatbox.innerHTML = '';
+    messageCounter = 0;
+}
+
+async function uploadFile() {
+    const file = document.getElementById('fileInput').files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    document.getElementById('docStatus').textContent = `Indexing "${file.name}"...`;
+
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (data.error) {
+        document.getElementById('docStatus').textContent = `Error: ${data.error}`;
+        return;
+    }
+
+    document.getElementById('useRag').checked = true;
+    document.getElementById('docStatus').textContent =
+        `Indexed "${data.filename}" into ${data.chunks} chunks. Document mode is on.`;
+}
+
+loadModels();
+</script>
+
+</body>
+</html>
